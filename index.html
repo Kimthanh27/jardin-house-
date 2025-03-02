@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Leonardo AI Img2Img Demo</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f0f0f0;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      width: 340px;
+      margin-top: 20px;
+    }
+    h1 {
+      font-size: 18px;
+      text-align: center;
+      margin-top: 0;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    .form-group label {
+      font-weight: bold;
+      display: block;
+      margin-bottom: 5px;
+    }
+    .form-group input[type="file"],
+    .form-group input[type="text"],
+    .form-group textarea,
+    .form-group input[type="range"] {
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      cursor: pointer;
+    }
+    button[type="submit"] {
+      padding: 8px 16px;
+      font-size: 16px;
+    }
+    .preview-container {
+      text-align: center;
+      margin-bottom: 15px;
+    }
+    .preview-container img {
+      max-width: 100%;
+      border: 1px solid #ccc;
+      margin-top: 5px;
+    }
+    /* Horizontal image layout */
+    #resultArea {
+      margin-top: 20px;
+    }
+    #resultArea img {
+      max-width: 100%;
+      border: 1px solid #ccc;
+      margin-bottom: 10px;
+    }
+    .section {
+      margin-bottom: 20px;
+    }
+    .section h3 {
+      margin: 0 0 10px;
+      text-align: center;
+    }
+    .powered {
+      text-align: center;
+      margin-top: 10px;
+      font-size: 13px;
+    }
+    .powered a {
+      text-decoration: none;
+      color: #3366cc;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Image to Image (Leonardo AI)</h1>
+
+    <!-- Tạo prompt với OpenAI Chat API -->
+    <div class="form-group">
+      <label>Keyword:</label>
+      <input type="text" id="keywordInput" placeholder="Enter a keyword..." />
+      <button type="button" id="generatePromptBtn">Generate Prompt</button>
+    </div>
+
+    <div class="form-group">
+      <label>AI Prompt (Generated):</label>
+      <textarea id="aiPromptOutput" rows="3" readonly></textarea>
+      <button type="button" id="copyToPromptBtn">Copy to Prompt</button>
+    </div>
+
+    <!-- Form chính để gửi prompt, ảnh, strength đến server -->
+    <form id="genForm">
+      <div class="form-group">
+        <label>Prompt (for Leonardo):</label>
+        <textarea name="prompt" id="promptInput" rows="3" placeholder="Mô tả hình ảnh..." required></textarea>
+      </div>
+      <div class="form-group">
+        <label>Upload Image:</label>
+        <input type="file" name="image" id="imageInput" accept="image/*" required />
+      </div>
+      <div class="preview-container">
+        <label>Original Image Preview:</label>
+        <img id="originalPreview" alt="Original" />
+      </div>
+      <div class="form-group">
+        <label>Denoising strength: <span id="strengthVal">0.5</span></label>
+        <input type="range" name="strength" id="strengthRange" min="0.1" max="0.9" step="0.1" value="0.5" />
+      </div>
+      <!-- Sửa endpoint thành /generate-upscaled -->
+      <button type="submit" id="generateBtn">Generate Images</button>
+    </form>
+
+    <!-- Khu vực hiển thị kết quả -->
+    <div id="resultArea"></div>
+
+    <div class="powered">
+      Powered by <a href="https://leonardo.ai" target="_blank">Leonardo AI</a>
+    </div>
+  </div>
+
+  <script>
+    const keywordInput = document.getElementById('keywordInput');
+    const generatePromptBtn = document.getElementById('generatePromptBtn');
+    const aiPromptOutput = document.getElementById('aiPromptOutput');
+    const copyToPromptBtn = document.getElementById('copyToPromptBtn');
+
+    const form = document.getElementById('genForm');
+    const fileInput = document.getElementById('imageInput');
+    const originalPreview = document.getElementById('originalPreview');
+    const promptInput = document.getElementById('promptInput');
+    const strengthRange = document.getElementById('strengthRange');
+    const strengthVal = document.getElementById('strengthVal');
+    const resultArea = document.getElementById('resultArea');
+
+    // 1. Generate Prompt bằng OpenAI Chat API
+    generatePromptBtn.addEventListener('click', async () => {
+      const keyword = keywordInput.value.trim();
+      if (!keyword) {
+        alert("Please enter a keyword.");
+        return;
+      }
+      try {
+        const res = await fetch('/generate-prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword })
+        });
+        if (!res.ok) throw new Error('Failed to generate prompt');
+        const data = await res.json();
+        aiPromptOutput.value = data.prompt || '';
+      } catch (err) {
+        console.error('Error generating prompt:', err);
+        alert('Could not generate prompt. Please try again.');
+      }
+    });
+
+    // 2. Copy AI Prompt sang Prompt của Leonardo
+    copyToPromptBtn.addEventListener('click', () => {
+      if (aiPromptOutput.value) {
+        promptInput.value = aiPromptOutput.value;
+      }
+    });
+
+    // 3. Hiển thị giá trị thanh trượt strength
+    strengthRange.addEventListener('input', () => {
+      strengthVal.textContent = strengthRange.value;
+    });
+
+    // 4. Xem trước ảnh gốc khi người dùng chọn file
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          originalPreview.src = evt.target.result;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        originalPreview.src = "";
+      }
+    });
+
+    // 5. Gửi form để tạo ảnh qua Leonardo AI (sử dụng endpoint /generate-upscaled)
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      resultArea.innerHTML = "<p>Generating images...</p>";
+
+      const formData = new FormData();
+      formData.append('image', fileInput.files[0]);
+      formData.append('prompt', promptInput.value);
+      formData.append('strength', strengthRange.value);
+
+      try {
+        const response = await fetch('/generate-upscaled', {
+          method: 'POST',
+          body: formData
+        });
+        if (!response.ok) throw new Error('Server error');
+        const data = await response.json();
+        if (data.error) {
+          resultArea.innerHTML = "<p style='color:red;'>" + data.error + "</p>";
+        } else {
+          resultArea.innerHTML = "";
+          
+          // Hiển thị ảnh gốc tạo ra
+          const genSection = document.createElement('div');
+          genSection.className = 'section';
+          genSection.innerHTML = "<h3>Generated Images:</h3>";
+          data.generated.forEach((url, idx) => {
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = "Generated Image " + (idx + 1);
+            genSection.appendChild(img);
+          });
+          resultArea.appendChild(genSection);
+          
+          // Hiển thị ảnh sau upscale
+          const upscaleSection = document.createElement('div');
+          upscaleSection.className = 'section';
+          upscaleSection.innerHTML = "<h3>Upscaled Results:</h3>";
+          data.upscaled.forEach((item, idx) => {
+            const img = document.createElement('img');
+            // Nếu không có upscaledUrl, hiển thị ảnh gốc
+            img.src = item.upscaledUrl || item.originalUrl;
+            img.alt = "Upscaled Image " + (idx + 1);
+            upscaleSection.appendChild(img);
+          });
+          resultArea.appendChild(upscaleSection);
+        }
+      } catch (err) {
+        console.error(err);
+        resultArea.innerHTML = "<p style='color:red;'>An error occurred!</p>";
+      }
+    });
+  </script>
+</body>
+</html>
